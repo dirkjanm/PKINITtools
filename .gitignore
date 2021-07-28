@@ -1,0 +1,9 @@
+build/
+*.egg-info
+dist/
+*.pyc
+*.csv
+*.json
+*.zip
+Pipfile
+*.ccache
