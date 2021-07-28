@@ -1,7 +1,7 @@
 # PKINIT tools
 
 This repository contains some utilities for playing with PKINIT and certificates.  
-The tools are built on [minikerberos](https://github.com/skelsec/minikerberos/tree/master/minikerberos) and [impacket](https://github.com/SecureAuthCorp/impacket).
+The tools are built on [minikerberos](https://github.com/skelsec/minikerberos/tree/master/minikerberos) and [impacket](https://github.com/SecureAuthCorp/impacket). Accompanying blogpost with more context: <https://dirkjanm.io/ntlm-relaying-to-ad-certificate-services/>
 
 ## Installation
 These tools are only compatible with Python 3.5+. Clone the repository from GitHub, install the dependencies and you should be good to go:
