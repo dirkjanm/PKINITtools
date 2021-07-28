@@ -51,7 +51,7 @@ from impacket.krb5.types import Principal, KerberosTime, Ticket
 from impacket.winregistry import hexdump
 
 
-class GETPAC:
+class GETPAC(object):
 
     def printPac(self, data, key=None):
         encTicketPart = decoder.decode(data, asn1Spec=EncTicketPart())[0]
@@ -208,7 +208,7 @@ class GETPAC:
         message = encoder.encode(tgsReq)
         logging.info('Requesting ticket to self with PAC')
 
-        r = sendReceive(message, self.__domain, None)
+        r = sendReceive(message, self.__domain, self.__kdcHost)
 
         tgs = decoder.decode(r, asn1Spec = TGS_REP())[0]
 
