@@ -276,8 +276,8 @@ def amain(args):
     logger.info('Loading certificate and key from file')
     if args.cert_pfx:
         ini = myPKINIT.from_pfx(args.cert_pfx, args.pfx_pass, dhparams)
-    elif args.cert_pem and args.cert_key:
-        ini = myPKINIT.from_pem(args.cert_pem, args.cert_key, dhparams)
+    elif args.cert_pem and args.key_pem:
+        ini = myPKINIT.from_pem(args.cert_pem, args.key_pem, dhparams)
     else:
         logging.error('You must either specify a PFX file + password or a combination of Cert PEM file and Private key PEM file')
         return
