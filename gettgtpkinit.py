@@ -35,7 +35,6 @@ from minikerberos.protocol.asn1_structs import KDC_REQ_BODY, PrincipalName, Host
     EncryptionKey, Authenticator, Ticket, APOptions, EncryptedData, AS_REQ, AP_REP, PADATA_TYPE, \
     PA_PAC_REQUEST
 from minikerberos.protocol.rfc4556 import PKAuthenticator, AuthPack, Dunno2, MetaData, Info, CertIssuer, CertIssuers, PA_PK_AS_REP, KDCDHKeyInfo, PA_PK_AS_REQ
-
 class myPKINIT(PKINIT):
     """
     Copy of minikerberos PKINIT
@@ -45,12 +44,29 @@ class myPKINIT(PKINIT):
     @staticmethod
     def from_pfx(pfxfile, pfxpass, dh_params = None):
         pkinit = myPKINIT()
-        #print('Loading pfx12')
-        if isinstance(pfxpass, str):
-            pfxpass = pfxpass.encode()
-        with open(pfxfile, 'rb') as f:
-            pkinit.privkeyinfo, pkinit.certificate, pkinit.extra_certs = parse_pkcs12(f.read(), password = pfxpass)
-            pkinit.privkey = load_private_key(pkinit.privkeyinfo)
+        # oscrypto does not seem to support pfx without password, so convert it to PEM using cryptography instead
+        if not pfxpass:
+            from cryptography.hazmat.primitives.serialization import pkcs12
+            from cryptography.hazmat.primitives import serialization
+            with open(pfxfile, 'rb') as f:
+                privkey, cert, extra_certs = pkcs12.load_key_and_certificates(f.read(),None)
+                pem_key = privkey.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption(),
+                )
+                pkinit.privkey = load_private_key(parse_private(pem_key))
+                pem_cert = cert.public_bytes(
+                    encoding=serialization.Encoding.PEM
+                )
+                pkinit.certificate = parse_certificate(pem_cert)
+        else:
+            #print('Loading pfx12')
+            if isinstance(pfxpass, str):
+                pfxpass = pfxpass.encode()
+            with open(pfxfile, 'rb') as f:
+                pkinit.privkeyinfo, pkinit.certificate, pkinit.extra_certs = parse_pkcs12(f.read(), password =None)
+                pkinit.privkey = load_private_key(pkinit.privkeyinfo)
         #print('pfx12 loaded!')
         pkinit.setup(dh_params = dh_params)
         return pkinit
@@ -279,7 +295,7 @@ def amain(args):
     elif args.cert_pem and args.key_pem:
         ini = myPKINIT.from_pem(args.cert_pem, args.key_pem, dhparams)
     else:
-        logging.error('You must either specify a PFX file + password or a combination of Cert PEM file and Private key PEM file')
+        logging.error('You must either specify a PFX file + optional password or a combination of Cert PEM file and Private key PEM file')
         return
     domain, username = args.identity.split('/')
     req = ini.build_asreq(domain,username)
