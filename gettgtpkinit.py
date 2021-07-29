@@ -70,7 +70,7 @@ class myPKINIT(PKINIT):
             #print('Loading pfx12')
             if isinstance(pfxpass, str):
                 pfxpass = pfxpass.encode()
-            pkinit.privkeyinfo, pkinit.certificate, pkinit.extra_certs = parse_pkcs12(pfxdata, password =None)
+            pkinit.privkeyinfo, pkinit.certificate, pkinit.extra_certs = parse_pkcs12(pfxdata, password=pfxpass)
             pkinit.privkey = load_private_key(pkinit.privkeyinfo)
         #print('pfx12 loaded!')
         pkinit.setup(dh_params = dh_params)
