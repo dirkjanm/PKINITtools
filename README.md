@@ -16,27 +16,27 @@ Using a virtualenv for this is recommended.
 ## Tools
 
 ### gettgtpkinit.py
-Request a TGT using a PFX file or PEM files for cert+key. This uses Kerberos PKINIT and will output a TGT into the specified ccache. It will also print the AS-REP encryption key which you may need for the getnthash.py tool. Usage example:
+Request a TGT using a PFX file, either as file or as base64 encoded blob, or PEM files for cert+key. This uses Kerberos PKINIT and will output a TGT into the specified ccache. It will also print the AS-REP encryption key which you may need for the getnthash.py tool. Usage example:
 
 ```
 (PKINITtools) user@localhost:~/PKINITtools$ python gettgtpkinit.py -h
-usage: gettgtpkinit.py [-h] [-cert-pfx PFX file] [-pfx-pass PFX file password] [-cert-pem Certificate in PEM format]
-                       [-key-pem Private key file in PEM format] [-dc-ip DC_IP] [-v]
+usage: gettgtpkinit.py [-h] [-cert-pfx file] [-pfx-pass password] [-pfx-base64 BASE64] [-cert-pem file] [-key-pem file] [-dc-ip DC_IP] [-v]
                        domain/username ccache
 
 Requests a TGT using Kerberos PKINIT and either a PEM or PFX based certificate+key
 
 positional arguments:
-  domain/username       Domain and username in the cert
-  ccache                ccache file to store the TGT in
+  domain/username     Domain and username in the cert
+  ccache              ccache file to store the TGT in
 
 optional arguments:
-  -h, --help            show this help message and exit
-  -cert-pfx PFX file
-  -pfx-pass PFX file password
-  -cert-pem Certificate in PEM format
-  -key-pem Private key file in PEM format
-  -dc-ip DC_IP          DC IP or hostname to use as KDC
+  -h, --help          show this help message and exit
+  -cert-pfx file      PFX file
+  -pfx-pass password  PFX file password
+  -pfx-base64 BASE64  PFX file as base64 string
+  -cert-pem file      Certificate in PEM format
+  -key-pem file       Private key file in PEM format
+  -dc-ip DC_IP        DC IP or hostname to use as KDC
   -v, --verbose
 
 (PKINITtools) user@localhost:~/PKINITtools$ python gettgtpkinit.py testsegment.local/s2019dc\$ -cert-pfx ~/impacket-py3/cert.pfx -pfx-pass hoi s2019dc.ccache

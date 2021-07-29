@@ -14,6 +14,7 @@ import binascii
 import secrets
 import datetime
 import hashlib
+import base64
 
 from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
 from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
@@ -43,30 +44,34 @@ class myPKINIT(PKINIT):
 
     @staticmethod
     def from_pfx(pfxfile, pfxpass, dh_params = None):
+        with open(pfxfile, 'rb') as f:
+            pfxdata = f.read()
+        return myPKINIT.from_pfx_data(pfxdata, pfxpass, dh_params)
+
+    @staticmethod
+    def from_pfx_data(pfxdata, pfxpass, dh_params = None):
         pkinit = myPKINIT()
         # oscrypto does not seem to support pfx without password, so convert it to PEM using cryptography instead
         if not pfxpass:
             from cryptography.hazmat.primitives.serialization import pkcs12
             from cryptography.hazmat.primitives import serialization
-            with open(pfxfile, 'rb') as f:
-                privkey, cert, extra_certs = pkcs12.load_key_and_certificates(f.read(),None)
-                pem_key = privkey.private_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PrivateFormat.TraditionalOpenSSL,
-                    encryption_algorithm=serialization.NoEncryption(),
-                )
-                pkinit.privkey = load_private_key(parse_private(pem_key))
-                pem_cert = cert.public_bytes(
-                    encoding=serialization.Encoding.PEM
-                )
-                pkinit.certificate = parse_certificate(pem_cert)
+            privkey, cert, extra_certs = pkcs12.load_key_and_certificates(pfxdata, None)
+            pem_key = privkey.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+            pkinit.privkey = load_private_key(parse_private(pem_key))
+            pem_cert = cert.public_bytes(
+                encoding=serialization.Encoding.PEM
+            )
+            pkinit.certificate = parse_certificate(pem_cert)
         else:
             #print('Loading pfx12')
             if isinstance(pfxpass, str):
                 pfxpass = pfxpass.encode()
-            with open(pfxfile, 'rb') as f:
-                pkinit.privkeyinfo, pkinit.certificate, pkinit.extra_certs = parse_pkcs12(f.read(), password =None)
-                pkinit.privkey = load_private_key(pkinit.privkeyinfo)
+            pkinit.privkeyinfo, pkinit.certificate, pkinit.extra_certs = parse_pkcs12(pfxdata, password =None)
+            pkinit.privkey = load_private_key(pkinit.privkeyinfo)
         #print('pfx12 loaded!')
         pkinit.setup(dh_params = dh_params)
         return pkinit
@@ -290,7 +295,10 @@ def amain(args):
         'g':2
     }
     logger.info('Loading certificate and key from file')
-    if args.cert_pfx:
+    if args.pfx_base64:
+        pfxdata = base64.b64decode(args.pfx_base64)
+        ini = myPKINIT.from_pfx_data(pfxdata, args.pfx_pass, dhparams)
+    elif args.cert_pfx:
         ini = myPKINIT.from_pfx(args.cert_pfx, args.pfx_pass, dhparams)
     elif args.cert_pem and args.key_pem:
         ini = myPKINIT.from_pem(args.cert_pem, args.key_pem, dhparams)
@@ -318,10 +326,11 @@ def main():
     parser = argparse.ArgumentParser(description='Requests a TGT using Kerberos PKINIT and either a PEM or PFX based certificate+key')
     parser.add_argument('identity', action='store', metavar='domain/username', help='Domain and username in the cert')
     parser.add_argument('ccache', help='ccache file to store the TGT in')
-    parser.add_argument('-cert-pfx', action='store', metavar='PFX file')
-    parser.add_argument('-pfx-pass', action='store', metavar='PFX file password')
-    parser.add_argument('-cert-pem', action='store', metavar='Certificate in PEM format')
-    parser.add_argument('-key-pem', action='store', metavar='Private key file in PEM format')
+    parser.add_argument('-cert-pfx', action='store', metavar='file', help='PFX file')
+    parser.add_argument('-pfx-pass', action='store', metavar='password', help='PFX file password')
+    parser.add_argument('-pfx-base64', action='store', metavar='BASE64', help='PFX file as base64 string')
+    parser.add_argument('-cert-pem', action='store', metavar='file', help='Certificate in PEM format')
+    parser.add_argument('-key-pem', action='store', metavar='file', help='Private key file in PEM format')
     parser.add_argument('-dc-ip', help='DC IP or hostname to use as KDC')
     parser.add_argument('-v', '--verbose', action='count', default=0)
 
