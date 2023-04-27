@@ -14,7 +14,7 @@ import pprint
 import secrets
 
 from minikerberos import logger
-from minikerberos.common.url import KerberosClientURL, kerberos_url_help_epilog
+from minikerberos.common.factory import KerberosClientFactory, kerberos_url_help_epilog
 from minikerberos.common.creds import KerberosCredential
 from minikerberos.client import KerbrosClient
 from minikerberos.common.spn import KerberosSPN
@@ -30,12 +30,12 @@ from minikerberos.protocol.constants import PaDataType, NAME_TYPE, MESSAGE_TYPE
 class KerberosClient(KerbrosClient):
 
     @staticmethod
-    def from_tgt(target, tgt, key):
+    def from_tgt(target, tgt, key, ccred):
         """
         Sets up the kerberos object from tgt and the session key.
         Use this function when pulling the TGT from ccache file.
         """
-        kc = KerberosClient(None, target)
+        kc = KerberosClient(ccred, target)
         kc.kerberos_TGT = tgt
 
         kc.kerberos_cipher_type = key['keytype']
@@ -149,11 +149,10 @@ class KerberosClient(KerbrosClient):
 async def amain(args):
     # This only works with ccache because I had to work around everything breaking
     # when using a ccache
-    cu = KerberosClientURL.from_url(args.kerberos_connection_url)
-    ccred = cu.get_creds()
+    cu = KerberosClientFactory.from_url(args.kerberos_connection_url)
     target = cu.get_target()
-    ccred = KerberosCredential.from_ccache_file(cu.secret)
-    service_spn = KerberosSPN.from_target_string(args.spn)
+    ccred = KerberosCredential.from_ccache(cu.secret)
+    service_spn = KerberosSPN.from_spn(args.spn)
     target_user = KerberosSPN.from_user_email(args.targetuser)
 
     if not ccred.ccache:
@@ -164,7 +163,7 @@ async def amain(args):
         for tgt, key in ccred.ccache.get_all_tgt():
             try:
                 logger.info('Trying to get SPN with %s for %s' % (target_user, service_spn))
-                client = KerberosClient.from_tgt(target, tgt, key)
+                client = KerberosClient.from_tgt(target, tgt, key, ccred)
 
                 tgs, encTGSRepPart, key = client.S4U2self(target_user, service_spn)
                 client.ccache.add_tgs(tgs, encTGSRepPart)
