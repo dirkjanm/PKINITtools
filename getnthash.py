@@ -114,9 +114,11 @@ class GETPAC(object):
                 oldSessionKey = sessionKey
                 logging.info('Using TGT from cache')
             else:
-                logging.debug("No valid credentials found in cache. ")
+                logging.critical("No valid credentials found in ccache file. ")
+                return
         except:
             logging.critical('No TGT found from ccache, did you set the KRB5CCNAME environment variable?')
+            return
 
         decodedTGT = decoder.decode(tgt, asn1Spec = AS_REP())[0]
 
