@@ -143,7 +143,7 @@ class GETPAC(object):
 
         seq_set(authenticator, 'cname', clientName.components_to_asn1)
 
-        now = datetime.datetime.now(datetime.timezone.UTC)
+        now = datetime.datetime.now(datetime.timezone.utc)
         authenticator['cusec'] = now.microsecond
         authenticator['ctime'] = KerberosTime.to_asn1(now)
 
@@ -203,7 +203,7 @@ class GETPAC(object):
             reqBody['sname']['name-string'][1] = str(decodedTGT['crealm'])
         reqBody['realm'] = str(decodedTGT['crealm'])
 
-        now = datetime.datetime.now(datetime.timezone.UTC) + datetime.timedelta(days=1)
+        now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
 
         reqBody['till'] = KerberosTime.to_asn1(now)
         reqBody['nonce'] = random.getrandbits(31)
@@ -282,6 +282,10 @@ if __name__ == '__main__':
 
     if domain is None:
         logging.critical('Domain should be specified!')
+        sys.exit(1)
+
+    if options.key is None and not options.doKeyList:
+        logging.critical('AS REP key (-key) is required unless using key list attack')
         sys.exit(1)
 
     if options.debug is True:
